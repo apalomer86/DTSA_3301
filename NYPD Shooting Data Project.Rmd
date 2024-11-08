@@ -1,0 +1,882 @@
+---
+title: "NYPD Shooting Data Project"
+author: "Angela Wilson"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+------------------------------------------------------------------------
+
+## Project Step 1: Start an Rmd Document
+
+My analysis finds the the majority of Black victims of NYPD shooting incidents faced Black perpetrators over 2006 through 2023.
+
+#### About the Dataset
+
+The NYPD Shooting Incident Data (Historic) dataset was taken from <https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic> on 10/30/2024. It is a non-federal dataset that lists every shooting incident that occurred in New York City from 2006 through 2023. Data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record in the dataset contains information about each shooting incident including time, location, and demographics of victims and suspects.
+
+#### Import Data
+
+```{r, echo = TRUE}
+
+# Load libraries
+library(tidyverse)
+```
+
+```{r, echo = TRUE}
+
+# Read in Data
+url = "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+raw_data = read_csv(url)
+```
+
+------------------------------------------------------------------------
+
+## Project Step 2: Tidy and Transform Your Data
+
+#### Initial Summary of Data
+
+Next, we called `summary(data)` to get an overview of our dataset.
+
+```{r, echo = TRUE}
+
+# Initial Summary of raw data
+summary(raw_data)
+```
+
+We clicked the landing page (<https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data>) of the dataset to find descriptions for each of those 21 variables.
+
+| Column (Variable) Name | Description |
+|------------------------------------|------------------------------------|
+| **`INCIDENT_KEY`** | Randomly generated persistent ID for each arrest |
+| **`OCCUR_DATE`** | Exact date of the shooting incident |
+| **`OCCUR_TIME`** | Exact time of the shooting incident |
+| **`BORO`** | Borough where the shooting incident occurred |
+| **`LOC_OF_OCCUR_DESC`** | (no description available) |
+| **`PRECINCT`** | Precinct where the shooting incident occurred |
+| **`JURISDICTION_CODE`** | Jurisdiction where the shooting incident occurred. Jurisdiction codes 0(Patrol), 1(Transit) and 2(Housing) represent NYPD whilst codes 3 and more represent non NYPD jurisdictions |
+| **`LOC_CLASSFCTN_DESC`** | (no description available) |
+| **`LOCATION_DESC`** | Location of the shooting incident |
+| **`STATISTICAL_MURDER_FLAG`** | Shooting resulted in the victim’s death which would be counted as a murder |
+| **`PERP_AGE_GROUP`** | Perpetrator’s age within a category |
+| **`PERP_SEX`** | Perpetrator’s sex description |
+| **`PERP_RACE`** | Perpetrator’s race description |
+| **`VIC_AGE_GROUP`** | Victim’s age within a category |
+| **`VIC_SEX`** | Victim’s sex description |
+| **`VIC_RACE`** | Victim’s race description |
+| **`X_COORD_CD`** | Midblock X-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104) |
+| **`Y_COORD_CD`** | Midblock Y-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104) |
+| **`Latitude`** | Latitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326) |
+| **`Longitude`** | Longitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326) |
+| **`Lon_Lat`** | Longitude and Latitude Coordinates for mapping |
+
+#### Clean and Transform Data
+
+We perform the following steps to properly clean and transform our data:
+
+-   **`X_COORD_CD`**, **`Y_COORD_CD`**, **`Latitude`**, **`Longitude`**, and **`Lon_Lat`** are not needed for our analysis, so they were removed from our dataset.
+-   **`LOC_OF_OCCUR_DESC`**, **`LOC_CLASSFCTN_DESC`** **`LOCATION_DESC`** all have a significant number of missing values, so they were removed as well.
+-   **`JURISDICTION_CODE`**, **`PERP_AGE_GROUP`**, **`PERP_SEX`**, and **`PERP_RACE`** were kept in our dataset, but rows with missing values for these columns were removed.
+
+```{r, echo = TRUE}
+
+# Remove variables: X_COORD_CD, Y_COORD_CD, Latitude, Longitude, #     Lon_Lat, LOC_OF_OCCUR_DESC, LOC_CLASSFCTN_DESC, 
+#     LOCATION_DESC
+data = raw_data %>%
+    select(-c(X_COORD_CD, Y_COORD_CD, Latitude, Longitude, 
+              Lon_Lat, LOC_OF_OCCUR_DESC, LOC_CLASSFCTN_DESC, 
+              LOCATION_DESC))
+
+# Remove rows with missing data
+data = data[complete.cases(data), ]
+```
+
+Further examination of the data showed that missing values were also entered in as strings such as `"(null)"`, `"U"` or `"UNKNOWN"`. We removed those rows as well.
+
+```{r, echo = TRUE}
+
+# Remove rows containing strings as missing values
+data = data %>%
+  filter(!grepl("null", PERP_AGE_GROUP)) %>%
+  filter(!grepl("UNKNOWN", PERP_AGE_GROUP)) %>%
+  filter(!grepl("1020", PERP_AGE_GROUP)) %>%
+  filter(!grepl("940", PERP_AGE_GROUP)) %>%
+  filter(!grepl("224", PERP_AGE_GROUP)) %>%
+  filter(!grepl("1028", PERP_AGE_GROUP)) %>%
+  filter(!grepl("U", PERP_SEX)) %>%
+  filter(!grepl("U", PERP_SEX)) %>%
+  filter(!grepl("(null)", PERP_RACE)) %>%
+  filter(!grepl("UNKNOWN", PERP_RACE)) %>%
+  filter(!grepl("UNKNOWN", VIC_AGE_GROUP)) %>%
+  filter(!grepl("1022", VIC_AGE_GROUP)) %>%
+  filter(!grepl("U", VIC_SEX)) %>%
+  filter(!grepl("UNKNOWN", VIC_RACE))
+```
+
+When we further examine our data, we see that out of $14680$ observations, we only have $2$ incidents where the `PERP_RACE` was `"AMERICAN INDIAN/ALASKAN NATIVE"`. There are also only $4$ incidents where the `VIC_RACE` was `"AMERICAN INDIAN/ALASKAN NATIVE"`. Because our counts in these categories are negligible, these rows were removed.
+
+```{r, echo = TRUE}
+
+# Remove rows containing "AMERICAN INDIAN/ALASKA NATIVE" in
+#     `PERP_RACE` or `VIC_RACE`
+data = data %>%
+  filter(!grepl("AMERICAN INDIAN/ALASKAN NATIVE", PERP_RACE)) %>%
+  filter(!grepl("AMERICAN INDIAN/ALASKAN NATIVE", VIC_RACE))
+```
+
+Change the `OCCUR_DATE` column from character to date.
+
+```{r, echo = TRUE}
+
+# Change OCCUR_DATE to date object
+data$OCCUR_DATE = as.Date(data$OCCUR_DATE, "%m/%d/%Y")
+```
+
+#### **Final Summary of Cleaned and Transformed Data**
+
+```{r, echo = TRUE}
+
+# Give a summary of a newly cleaned and transformed data
+summary(data)
+```
+
+------------------------------------------------------------------------
+
+## Project Step 3: Add Visualizations and Analysis
+
+#### Visualization 1
+
+Create a pie chart showing the proportion of victims by race.
+
+```{r, echo = TRUE}
+
+# Get proportions of victims by race
+VIC_RACE_prop_table = as.data.frame(prop.table(table(
+    data$VIC_RACE)))
+VIC_RACE_prop_table = (VIC_RACE_prop_table[order(
+    VIC_RACE_prop_table[,2],
+    decreasing = TRUE), ])
+
+VIC_RACE_list = VIC_RACE_prop_table[, 1]
+VIC_RACE_proportions = VIC_RACE_prop_table[, 2]
+
+# Pie Chart of victims by race
+ggplot(data, aes(x = "", y = "", fill = VIC_RACE)) +
+    geom_bar(width = 1, stat = "identity") +
+    coord_polar("y", start = 0)
+```
+
+#### Visualization 2
+
+Create a pie chart showing the proportion of perpetrators by race.
+
+```{r, echo = TRUE}
+
+# Get proportions of perpetrators by race
+PERP_RACE_prop_table = as.data.frame(prop.table(table(
+    data$PERP_RACE)))
+PERP_RACE_prop_table = (
+    PERP_RACE_prop_table[order(PERP_RACE_prop_table[, 2], decreasing = TRUE), ])
+
+PERP_RACE_list = PERP_RACE_prop_table[, 1]
+PERP_RACE_proportions = PERP_RACE_prop_table[, 2]
+
+# Pie Chart of perpetrators by race
+ggplot(data,
+       aes(x = "",
+           y = "",
+           fill = PERP_RACE)) +
+    geom_bar(width = 1,
+             stat = "identity") +
+    coord_polar("y",
+                start = 0)
+```
+
+#### Visualization 3
+
+Both previous visualizations showed that the majority of victims and perpetrators are both Black. Let's look at our subset of Black victims and see the proportion of their perpetrators by race.
+
+```{r, echo = TRUE}
+
+# Subset of Black victims
+data_VIC_RACE_BLACK = data %>%
+    filter(VIC_RACE == "BLACK") %>%
+    group_by(VIC_RACE,
+             PERP_RACE,
+             OCCUR_DATE) %>%
+    select(VIC_RACE,
+           PERP_RACE,
+           OCCUR_DATE,
+           everything())
+
+# Get proportions of perpetrators by race
+data_VIC_RACE_BLACK_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK$PERP_RACE)))
+data_VIC_RACE_BLACK_prop_table = (
+    data_VIC_RACE_BLACK_prop_table[order(
+        data_VIC_RACE_BLACK_prop_table[,2],
+        decreasing = TRUE), ])
+print(data_VIC_RACE_BLACK_prop_table)
+
+# Pie Chart of perpetrators by race for Black victims
+ggplot(data_VIC_RACE_BLACK,
+       aes(x = "",
+           y = "",
+           fill = PERP_RACE)) +
+    geom_bar(width = 1,
+             stat = "identity") +
+    coord_polar("y",
+                start = 0)
+```
+
+#### **Analysis**
+
+Right now, our data over the years 2006 - 2023 is all lumped together. Let's break up our data by year so we can see how it changes over time.
+
+```{r, echo = TRUE}
+
+seq(as.Date("2006-01-01"),
+    to = as.Date("2023-12-29"),
+    by = "1 year")
+```
+
+We created separate code chunks to get the proportions of perpetrators by race for black victims for each year within our dataset. We showed the code for extracting 2006 data. Years were changed accordingly to extract data for years 2007-2023, but codes were not shown for brevity.
+
+```{r, echo = TRUE}
+
+# 2006 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_06 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2006-01-01"),
+                   as.Date("2006-12-31")))
+
+data_VIC_RACE_BLACK_06_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_06$PERP_RACE)))
+data_VIC_RACE_BLACK_06_prop_table = (
+    data_VIC_RACE_BLACK_06_prop_table[order(
+        data_VIC_RACE_BLACK_06_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2007 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_07 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2007-01-01"),
+                   as.Date("2007-12-31")))
+
+data_VIC_RACE_BLACK_07_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_07$PERP_RACE)))
+data_VIC_RACE_BLACK_07_prop_table = (
+    data_VIC_RACE_BLACK_07_prop_table[order(
+        data_VIC_RACE_BLACK_07_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2008 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_08 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2008-01-01"),
+                   as.Date("2008-12-31")))
+
+data_VIC_RACE_BLACK_08_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_08$PERP_RACE)))
+data_VIC_RACE_BLACK_08_prop_table = (
+    data_VIC_RACE_BLACK_08_prop_table[order(
+        data_VIC_RACE_BLACK_08_prop_table[,2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2009 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_09 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2009-01-01"),
+                   as.Date("2009-12-31")))
+
+data_VIC_RACE_BLACK_09_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_09$PERP_RACE)))
+data_VIC_RACE_BLACK_09_prop_table = (
+    data_VIC_RACE_BLACK_09_prop_table[order(
+        data_VIC_RACE_BLACK_09_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2010 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_10 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2010-01-01"),
+                   as.Date("2010-12-31")))
+
+data_VIC_RACE_BLACK_10_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_10$PERP_RACE)))
+data_VIC_RACE_BLACK_10_prop_table = (
+    data_VIC_RACE_BLACK_10_prop_table[order(
+        data_VIC_RACE_BLACK_10_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2011 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_11 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2011-01-01"),
+                   as.Date("2011-12-31")))
+
+data_VIC_RACE_BLACK_11_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_11$PERP_RACE)))
+data_VIC_RACE_BLACK_11_prop_table = (
+    data_VIC_RACE_BLACK_11_prop_table[order(
+        data_VIC_RACE_BLACK_11_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2012 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_12 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2012-01-01"),
+                   as.Date("2012-12-31")))
+
+data_VIC_RACE_BLACK_12_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_12$PERP_RACE)))
+data_VIC_RACE_BLACK_12_prop_table = (
+    data_VIC_RACE_BLACK_12_prop_table[order(
+        data_VIC_RACE_BLACK_12_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2013 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_13 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2013-01-01"),
+                   as.Date("2013-12-31")))
+
+data_VIC_RACE_BLACK_13_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_13$PERP_RACE)))
+data_VIC_RACE_BLACK_13_prop_table = (
+    data_VIC_RACE_BLACK_13_prop_table[order(
+        data_VIC_RACE_BLACK_13_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2014 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_14 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2014-01-01"),
+                   as.Date("2014-12-31")))
+
+data_VIC_RACE_BLACK_14_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_14$PERP_RACE)))
+data_VIC_RACE_BLACK_14_prop_table = (
+    data_VIC_RACE_BLACK_14_prop_table[order(
+        data_VIC_RACE_BLACK_14_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2015 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_15 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2015-01-01"),
+                   as.Date("2015-12-31")))
+
+data_VIC_RACE_BLACK_15_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_15$PERP_RACE)))
+data_VIC_RACE_BLACK_15_prop_table = (
+    data_VIC_RACE_BLACK_15_prop_table[order(
+        data_VIC_RACE_BLACK_15_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2016 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_16 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2016-01-01"),
+                   as.Date("2016-12-31")))
+
+data_VIC_RACE_BLACK_16_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_16$PERP_RACE)))
+data_VIC_RACE_BLACK_16_prop_table = (
+    data_VIC_RACE_BLACK_16_prop_table[order(
+        data_VIC_RACE_BLACK_16_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2017 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_17 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2017-01-01"),
+                   as.Date("2017-12-31")))
+
+data_VIC_RACE_BLACK_17_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_17$PERP_RACE)))
+data_VIC_RACE_BLACK_17_prop_table = (
+    data_VIC_RACE_BLACK_17_prop_table[order(
+        data_VIC_RACE_BLACK_17_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2018 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_18 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2018-01-01"),
+                   as.Date("2018-12-31")))
+
+data_VIC_RACE_BLACK_18_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_18$PERP_RACE)))
+data_VIC_RACE_BLACK_18_prop_table = (
+    data_VIC_RACE_BLACK_18_prop_table[order(
+        data_VIC_RACE_BLACK_18_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2019 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_19 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2019-01-01"),
+                   as.Date("2019-12-31")))
+
+data_VIC_RACE_BLACK_19_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_19$PERP_RACE)))
+data_VIC_RACE_BLACK_19_prop_table = (
+    data_VIC_RACE_BLACK_19_prop_table[order(
+        data_VIC_RACE_BLACK_19_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2020 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_20 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2020-01-01"),
+                   as.Date("2020-12-31")))
+
+data_VIC_RACE_BLACK_20_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_20$PERP_RACE)))
+data_VIC_RACE_BLACK_20_prop_table = (
+    data_VIC_RACE_BLACK_20_prop_table[order(
+        data_VIC_RACE_BLACK_20_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2021 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_21 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2021-01-01"),
+                   as.Date("2021-12-31")))
+
+data_VIC_RACE_BLACK_21_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_21$PERP_RACE)))
+data_VIC_RACE_BLACK_21_prop_table = (
+    data_VIC_RACE_BLACK_21_prop_table[order(
+        data_VIC_RACE_BLACK_21_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2022 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_22 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2022-01-01"),
+                   as.Date("2022-12-31")))
+
+data_VIC_RACE_BLACK_22_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_22$PERP_RACE)))
+data_VIC_RACE_BLACK_22_prop_table = (
+    data_VIC_RACE_BLACK_22_prop_table[order(
+        data_VIC_RACE_BLACK_22_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+```{r, echo = FALSE}
+
+# 2023 perpetrators by race for Black victims
+data_VIC_RACE_BLACK_23 = data_VIC_RACE_BLACK %>%
+    filter(between(OCCUR_DATE,
+                   as.Date("2023-01-01"),
+                   as.Date("2023-12-31")))
+
+data_VIC_RACE_BLACK_23_prop_table = as.data.frame(
+    prop.table(table(data_VIC_RACE_BLACK_23$PERP_RACE)))
+data_VIC_RACE_BLACK_23_prop_table = (
+    data_VIC_RACE_BLACK_23_prop_table[order(
+        data_VIC_RACE_BLACK_23_prop_table[, 2],
+        decreasing = TRUE), ])
+```
+
+The following vectors show the frequency rates per year of perpetrators by race for Black victims of NYPD shooting incidents.
+
+```{r, echo = TRUE}
+
+# Frequency rate of Black perpetrators
+FREQ_BLACK = c(
+    data_VIC_RACE_BLACK_06_prop_table[1, 2],
+    data_VIC_RACE_BLACK_07_prop_table[1, 2],        
+    data_VIC_RACE_BLACK_08_prop_table[1, 2],
+    data_VIC_RACE_BLACK_09_prop_table[1, 2],
+    data_VIC_RACE_BLACK_10_prop_table[1, 2],
+    data_VIC_RACE_BLACK_11_prop_table[1, 2],
+    data_VIC_RACE_BLACK_12_prop_table[1, 2],
+    data_VIC_RACE_BLACK_13_prop_table[1, 2],
+    data_VIC_RACE_BLACK_14_prop_table[1, 2],
+    data_VIC_RACE_BLACK_15_prop_table[1, 2],
+    data_VIC_RACE_BLACK_16_prop_table[1, 2],
+    data_VIC_RACE_BLACK_17_prop_table[1, 2],
+    data_VIC_RACE_BLACK_18_prop_table[1, 2],
+    data_VIC_RACE_BLACK_19_prop_table[1, 2],
+    data_VIC_RACE_BLACK_20_prop_table[1, 2],
+    data_VIC_RACE_BLACK_21_prop_table[1, 2],
+    data_VIC_RACE_BLACK_22_prop_table[1, 2],
+    data_VIC_RACE_BLACK_23_prop_table[1, 2])
+```
+
+```{r, echo = TRUE}
+
+# Frequency rate of White-Hispanic perpetrators
+FREQ_WHITE_HISP = c(
+    data_VIC_RACE_BLACK_06_prop_table[2, 2],
+    data_VIC_RACE_BLACK_07_prop_table[2, 2],
+    data_VIC_RACE_BLACK_08_prop_table[2, 2],
+    data_VIC_RACE_BLACK_09_prop_table[2, 2],
+    data_VIC_RACE_BLACK_10_prop_table[2, 2],
+    data_VIC_RACE_BLACK_11_prop_table[2, 2],
+    data_VIC_RACE_BLACK_12_prop_table[2, 2],
+    data_VIC_RACE_BLACK_13_prop_table[2, 2],
+    data_VIC_RACE_BLACK_14_prop_table[3, 2],
+    data_VIC_RACE_BLACK_15_prop_table[2, 2],
+    data_VIC_RACE_BLACK_16_prop_table[2, 2],
+    data_VIC_RACE_BLACK_17_prop_table[2, 2],
+    data_VIC_RACE_BLACK_18_prop_table[2, 2],
+    data_VIC_RACE_BLACK_19_prop_table[2, 2],
+    data_VIC_RACE_BLACK_20_prop_table[2, 2],
+    data_VIC_RACE_BLACK_21_prop_table[2, 2],
+    data_VIC_RACE_BLACK_22_prop_table[2, 2],
+    data_VIC_RACE_BLACK_23_prop_table[2, 2])
+```
+
+```{r, echo = TRUE}
+
+# Frequency rate of Black-Hispanic perpetrators
+
+FREQ_BLACK_HISP = c(
+    data_VIC_RACE_BLACK_06_prop_table[3, 2],
+    data_VIC_RACE_BLACK_07_prop_table[3, 2],
+    data_VIC_RACE_BLACK_08_prop_table[3, 2],
+    data_VIC_RACE_BLACK_09_prop_table[3, 2],
+    data_VIC_RACE_BLACK_10_prop_table[3, 2],
+    data_VIC_RACE_BLACK_11_prop_table[3, 2],
+    data_VIC_RACE_BLACK_12_prop_table[3, 2],
+    data_VIC_RACE_BLACK_13_prop_table[3, 2],
+    data_VIC_RACE_BLACK_14_prop_table[2, 2],
+    data_VIC_RACE_BLACK_15_prop_table[3, 2],
+    data_VIC_RACE_BLACK_16_prop_table[3, 2],
+    data_VIC_RACE_BLACK_17_prop_table[3, 2],
+    data_VIC_RACE_BLACK_18_prop_table[3, 2],
+    data_VIC_RACE_BLACK_19_prop_table[3, 2],
+    data_VIC_RACE_BLACK_20_prop_table[3, 2],
+    data_VIC_RACE_BLACK_21_prop_table[3, 2],
+    data_VIC_RACE_BLACK_22_prop_table[3, 2],
+    data_VIC_RACE_BLACK_23_prop_table[3, 2])
+```
+
+```{r, echo = TRUE}
+
+# Frequency rate of White perpetrators
+FREQ_WHITE = c(
+    data_VIC_RACE_BLACK_06_prop_table[5, 2],
+    data_VIC_RACE_BLACK_07_prop_table[4, 2],
+    data_VIC_RACE_BLACK_08_prop_table[5, 2],
+    data_VIC_RACE_BLACK_09_prop_table[5, 2],
+    NA,
+    data_VIC_RACE_BLACK_11_prop_table[4, 2],
+    data_VIC_RACE_BLACK_12_prop_table[5, 2],
+    data_VIC_RACE_BLACK_13_prop_table[5, 2],
+    data_VIC_RACE_BLACK_14_prop_table[5, 2],
+    data_VIC_RACE_BLACK_15_prop_table[5, 2],
+    data_VIC_RACE_BLACK_16_prop_table[5, 2],
+    data_VIC_RACE_BLACK_17_prop_table[4, 2],
+    data_VIC_RACE_BLACK_18_prop_table[4, 2],
+    data_VIC_RACE_BLACK_19_prop_table[4, 2],
+    data_VIC_RACE_BLACK_20_prop_table[5, 2],
+    data_VIC_RACE_BLACK_21_prop_table[5, 2],
+    data_VIC_RACE_BLACK_22_prop_table[4, 2],
+    data_VIC_RACE_BLACK_23_prop_table[4, 2])
+```
+
+```{r, echo = TRUE}
+
+# Frequency rate of Asian perpetrators
+FREQ_ASIAN = c(
+    data_VIC_RACE_BLACK_06_prop_table[4, 2],
+    NA,
+    data_VIC_RACE_BLACK_08_prop_table[4, 2],
+    data_VIC_RACE_BLACK_09_prop_table[4, 2],
+    NA,
+    data_VIC_RACE_BLACK_11_prop_table[5, 2],
+    data_VIC_RACE_BLACK_12_prop_table[4, 2],
+    data_VIC_RACE_BLACK_13_prop_table[4, 2],
+    data_VIC_RACE_BLACK_14_prop_table[4, 2],
+    data_VIC_RACE_BLACK_15_prop_table[4, 2],
+    data_VIC_RACE_BLACK_16_prop_table[4, 2],
+    NA,
+    NA,
+    data_VIC_RACE_BLACK_19_prop_table[5, 2],
+    data_VIC_RACE_BLACK_20_prop_table[4, 2],
+    data_VIC_RACE_BLACK_21_prop_table[4, 2],
+    data_VIC_RACE_BLACK_22_prop_table[5, 2],
+    data_VIC_RACE_BLACK_23_prop_table[5, 2])
+```
+
+```{r, echo = TRUE}
+
+# Set vector for plot x-axis
+x = c(as.Date("2006-12-31"),
+      as.Date("2007-12-31"),
+      as.Date("2008-12-31"),
+      as.Date("2009-12-31"),
+      as.Date("2010-12-31"),
+      as.Date("2011-12-31"),
+      as.Date("2012-12-31"),
+      as.Date("2013-12-31"),
+      as.Date("2014-12-31"),
+      as.Date("2015-12-31"),
+      as.Date("2016-12-31"),
+      as.Date("2017-12-31"),
+      as.Date("2018-12-31"),
+      as.Date("2019-12-31"),
+      as.Date("2020-12-31"),
+      as.Date("2021-12-31"),
+      as.Date("2022-12-31"),
+      as.Date("2023-12-31"))
+
+# Create plot for "Rate of Black Victims' Perpetrators by Race"
+ggplot() +
+    geom_point(aes(x, y = FREQ_BLACK,
+                   color = "BLACK")) +
+    geom_line(aes(x, y = FREQ_BLACK,
+                  color = "BLACK")) +
+    geom_point(aes(x, y = FREQ_WHITE_HISP,
+                   color = "WHITE_HISP")) +
+    geom_line(aes(x, y = FREQ_WHITE_HISP,
+                  color = "WHITE_HISP")) +
+    geom_point(aes(x, y = FREQ_BLACK_HISP,
+                   color = "BLACK_HISP")) +
+    geom_line(aes(x, y = FREQ_BLACK_HISP,
+                  color = "BLACK_HISP")) +
+    geom_point(aes(x, y = FREQ_WHITE,
+                   color = "WHITE")) +
+    geom_line(aes(x, y = FREQ_WHITE,
+                  color = "WHITE")) +
+    geom_point(aes(x, y = FREQ_ASIAN,
+                   color = "ASIAN")) +
+    geom_line(aes(x, y = FREQ_ASIAN,
+                  color = "ASIAN")) +
+    scale_x_date(breaks = "3 years",
+                 minor_breaks = "1 year",
+                 date_labels = "%Y",
+                 name = "Year") +
+    scale_y_continuous(labels = scales::percent_format(
+        accuracy = 1)) +
+    theme(legend.position = "bottom",
+          axis.text.test_date = element_text(angle = 60)) +
+    labs(title = "Rate of Black Victims' Perpetrators by Race",
+         y = NULL)
+```
+
+Scroll back up to the Visualization 3 to see the original proportions we found for Black victims and their perpetrators by race. We'll use these as our predicted values for our data if we were to project values through the end of 2024 going into 2025.
+
+```{r, echo = TRUE}
+
+# Set vector for x-axis with prediction
+x = c(as.Date("2006-12-31"),
+      as.Date("2007-12-31"),
+      as.Date("2008-12-31"),
+      as.Date("2009-12-31"),
+      as.Date("2010-12-31"),
+      as.Date("2011-12-31"),
+      as.Date("2012-12-31"),
+      as.Date("2013-12-31"),
+      as.Date("2014-12-31"),
+      as.Date("2015-12-31"),
+      as.Date("2016-12-31"),
+      as.Date("2017-12-31"),
+      as.Date("2018-12-31"),
+      as.Date("2019-12-31"),
+      as.Date("2020-12-31"),
+      as.Date("2021-12-31"),
+      as.Date("2022-12-31"),
+      as.Date("2023-12-31"),
+      as.Date("2024-12-31"))
+
+FREQ_BLACK_pred = data_VIC_RACE_BLACK_prop_table[1, 2]
+FREQ_WHITE_HISP_pred = data_VIC_RACE_BLACK_prop_table[2, 2]
+FREQ_BLACK_HISP_pred = data_VIC_RACE_BLACK_prop_table[3, 2]
+FREQ_ASIAN_pred = data_VIC_RACE_BLACK_prop_table[4, 2]
+FREQ_WHITE_pred = data_VIC_RACE_BLACK_prop_table[5, 2]
+```
+
+We created a generalized linear model for each subset of perpetrators by race for Black victims. We showed the code for Black perpetrators, but we changed `BLACK` to `WHITE_HISP`, `BLACK_HISP`, `ASIAN`, and `WHITE` to get the generalized linear models for all the other races.
+
+```{r, echo = TRUE}
+
+# Black perpetrators, with prediction
+df_FREQ_BLACK = data.frame(FREQ_BLACK,
+                           FREQ_BLACK_pred)
+glm_FREQ_BLACK = glm(FREQ_BLACK ~
+                         FREQ_BLACK_pred,
+                     data = df_FREQ_BLACK)
+glm_FREQ_BLACK
+```
+
+```{r, echo = FALSE}
+
+# White Hispanic perpetrators, with prediction
+df_FREQ_WHITE_HISP = data.frame(FREQ_WHITE_HISP,
+                                FREQ_WHITE_HISP_pred)
+glm_FREQ_WHITE_HISP = glm(FREQ_WHITE_HISP ~
+                              FREQ_WHITE_HISP_pred,
+                          data = df_FREQ_WHITE_HISP)
+glm_FREQ_WHITE_HISP
+```
+
+```{r, echo = FALSE}
+
+# Black Hispanic perpetrators, with prediction
+df_FREQ_BLACK_HISP = data.frame(FREQ_BLACK_HISP,
+                                FREQ_BLACK_HISP_pred)
+glm_FREQ_BLACK_HISP = glm(FREQ_BLACK_HISP ~
+                              FREQ_BLACK_HISP_pred,
+                          data = df_FREQ_BLACK_HISP)
+glm_FREQ_BLACK_HISP
+```
+
+```{r, echo = FALSE}
+
+# Asian perpetrators, with prediction
+df_FREQ_ASIAN = data.frame(FREQ_ASIAN,
+                           FREQ_ASIAN_pred)
+glm_FREQ_ASIAN = glm(FREQ_ASIAN ~
+                         FREQ_ASIAN_pred,
+                     data = df_FREQ_ASIAN)
+glm_FREQ_ASIAN
+```
+
+```{r, echo = FALSE}
+
+# White perpetrators, with prediction
+df_FREQ_WHITE = data.frame(FREQ_WHITE,
+                           FREQ_WHITE_pred)
+glm_FREQ_WHITE = glm(FREQ_WHITE ~
+                         FREQ_WHITE_pred,
+                     data = df_FREQ_WHITE)
+glm_FREQ_WHITE
+```
+
+After running the generalized model, we obtained the following residual deviance scores:
+
+-   **Black:** $0.019$
+
+-   **White Hisp:** $0.009105$
+
+-   **Black Hisp:** $0.00249$
+
+-   **Asian:** $0.0003916$
+
+-   **White:** $0.0001186$
+
+All our residual deviance scores were small, so we can use the frequency rates of perpetrators by race for Black victims as a reasonable model to predict future rates of perpetrators. We added one last visualization showing the projected rates.
+
+```{r, echo = TRUE}
+
+FREQ_BLACK_final = append(FREQ_BLACK, FREQ_BLACK_pred)
+FREQ_WHITE_HISP_final = append(FREQ_WHITE_HISP,
+                               FREQ_WHITE_HISP_pred)
+FREQ_BLACK_HISP_final = append(FREQ_BLACK_HISP,
+                               FREQ_BLACK_HISP_pred)
+FREQ_ASIAN_final = append(FREQ_ASIAN,
+                          FREQ_ASIAN_pred)
+FREQ_WHITE_final = append(FREQ_WHITE,
+                          FREQ_WHITE_pred)
+
+ggplot() +
+    geom_point(aes(x, y = FREQ_BLACK_final,
+                   color = "BLACK")) +
+    geom_line(aes(x, y = FREQ_BLACK_final,
+                  color = "BLACK")) +
+    geom_point(aes(x, y = FREQ_WHITE_HISP_final,
+                   color = "WHITE_HISP")) +
+    geom_line(aes(x, y = FREQ_WHITE_HISP_final,
+                  color = "WHITE_HISP")) +
+    geom_point(aes(x, y = FREQ_BLACK_HISP_final,
+                   color = "BLACK_HISP")) +
+    geom_line(aes(x, y = FREQ_BLACK_HISP_final,
+                  color = "BLACK_HISP")) +
+    geom_point(aes(x, y = FREQ_WHITE_final,
+                   color = "WHITE")) +
+    geom_line(aes(x, y = FREQ_WHITE_final,
+                  color = "WHITE")) +
+    geom_point(aes(x, y = FREQ_ASIAN_final,
+                   color = "ASIAN")) +
+    geom_line(aes(x, y = FREQ_ASIAN_final,
+                  color = "ASIAN")) +
+    scale_x_date(breaks = "3 years",
+                 minor_breaks = "1 year",
+                 date_labels = "%Y",
+                 name = "Year") +
+    scale_y_continuous(labels = scales::percent_format(
+        accuracy = 1)) +
+    theme(legend.position = "bottom",
+          axis.text.test_date = element_text(angle = 60)) +
+    labs(title = "Rate of Black Victims' Perpetrators by Race (with prediction)",
+         y = NULL)
+```
+
+#### Additional Questions
+
+Since this analysis only covered this given dataset, we did not include information on population rates within New York City. Does this data reflect the demographic proportions of this population? Does it reflect the socioeconomic statistics of this population?
+
+------------------------------------------------------------------------
+
+## Project Step 4: Add Bias Identification
+
+#### Conclusion
+
+Our analysis shows that for Black victims of NYPD shooting incidents, frequency rates of perpetrators by race have stayed relatively stable since 2006, but the majority of perpetrators has consistently been Black.
+
+#### Possible Sources of Bias
+
+Based on recent events like the killing of George Floyd in 2020 and the subsequent Black Lives Matter protests, the media makes it appear that the majority of Black victims of police violence are attacked by White perpetrators. This data shows the opposite.
+
+Further analysis should be done to see why the majority of perpetrators for Black victims of police shooting incidents were also Black.
