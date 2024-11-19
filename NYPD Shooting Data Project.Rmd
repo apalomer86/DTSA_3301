@@ -1,0 +1,773 @@
+---
+title: "NYPD Shooting Data Project: Intra-racial Gun Violence"
+author: "Angela Wilson"
+date: "`r Sys.Date()`"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+------------------------------------------------------------------------
+
+```{r, echo = FALSE}
+
+# Load libraries
+library(tidyverse)
+```
+
+------------------------------------------------------------------------
+
+### **Abstract**
+
+This analysis aims to compare the rates of fatal and non-fatal gun violence events between different racial groups in New York City: Asian / Pacific Islander, Black, Black Hispanic, White, and White Hispanic. Data suggests that shooting incidents are more likely to take place between individuals of the same race, even if the majority of perpetrators are reported to be Black.
+
+The Rmd file with the full code for this analysis can be found at
+
+------------------------------------------------------------------------
+
+------------------------------------------------------------------------
+
+### **About the Dataset**
+
+The NYPD Shooting Incident Data (Historic) dataset was taken from <https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic> on 10/30/2024. At the time of writing, this non-federal dataset lists every shooting incident that occurred in New York City from 2006 through 2023. Records in the dataset include information about each shooting incident including time, location, and demographics (age, race, and sex) of victims and perpetrators.
+
+```{r, echo = FALSE}
+
+# Read in Data
+url = "https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD"
+raw_data = read_csv(url)
+```
+
+------------------------------------------------------------------------
+
+### **Initial Overview of Data**
+
+The raw dataset shows $28652$ shooting incidents described over $21$ variables. We clicked the landing page (<https://data.cityofnewyork.us/Public-Safety/NYPD-Shooting-Incident-Data-Historic-/833y-fsy8/about_data>) of the dataset to find descriptions for each of these variables and listed them in the table below.
+
+| Column (Variable) Name | Description |
+|-----------------------------------|------------------------------------------------------------|
+| `INCIDENT_KEY` | Randomly generated persistent ID for each arrest |
+| `OCCUR_DATE` | Exact date of the shooting incident |
+| `OCCUR_TIME` | Exact time of the shooting incident |
+| `BORO` | Borough where the shooting incident occurred |
+| `LOC_OF_OCCUR_DESC` | (no description available) |
+| `PRECINCT` | Precinct where the shooting incident occurred |
+| `JURISDICTION_CODE` | Jurisdiction where the shooting incident occurred. Jurisdiction codes: 0 = (Patrol), 1 = (Transit), and 2 = (Housing) represent NYPD whilst codes 3 and more represent non NYPD jurisdictions |
+| `LOC_CLASSFCTN_DESC` | (no description available) |
+| `LOCATION_DESC` | Location of the shooting incident |
+| `STATISTICAL_MURDER_FLAG` | Shooting resulted in the victim’s death which would be counted as a murder |
+| `PERP_AGE_GROUP` | Perpetrator’s age within a category |
+| `PERP_SEX` | Perpetrator’s sex description |
+| `PERP_RACE` | Perpetrator’s race description |
+| `VIC_AGE_GROUP` | Victim’s age within a category |
+| `VIC_SEX` | Victim’s sex description |
+| `VIC_RACE` | Victim’s race description |
+| `X_COORD_CD` | Midblock X-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104) |
+| `Y_COORD_CD` | Midblock Y-coordinate for New York State Plane Coordinate System, Long Island Zone, NAD 83, units feet (FIPS 3104) |
+| `Latitude` | Latitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326) |
+| `Longitude` | Longitude coordinate for Global Coordinate System, WGS 1984, decimal degrees (EPSG 4326) |
+| `Lon_Lat` | Longitude and Latitude Coordinates for mapping |
+
+We called `summary(data)` to get an overview of our raw dataset.
+
+```{r, echo = FALSE}
+
+# Initial Summary of raw data
+summary(raw_data)
+```
+
+------------------------------------------------------------------------
+
+### **Clean and Transform Data**
+
+The variables `INCIDENT_KEY`, `OCCUR_TIME`, `BORO`, `LOC_OF_OCCUR_DESC`, `PRECINCT`, `JURISDICTION_CODE`, `LOC_CLASSFCTN_DESC`, `LOCATION_DESC`, `PERP_AGE_GROUP`, `PERP_SEX`, `VIC_AGE_GROUP`, `VIC_SEX`, `X_COORD_CD`, `Y_COORD_CD`, `Latitude`, `Longitude`, and `Lon_Lat` are not needed for our analysis, so these variables were removed. This narrows our data down to four variables: `OCCUR_DATE` (date the shooting incident occurred), `STATISTICAL_MURDER_FLAG` (where "TRUE" indicates the shooting incident was fatal and "FALSE" indicates that it was not), `PERP_RACE` (race of the perpetrator), and `VIC_RACE` (race of the victim).
+
+```{r, echo = FALSE}
+
+# Remove variables: INCIDIENT_KEY, OCCUR_TIME, BORO, 
+#       LOC_OF_OCCUR_DESC, PRECINCT, JURISDICTION_CODE, 
+#       LOC_CLASSFCTN_DESC, LOCATION_DESC, PERP_AGE_GROUP, 
+#       PERP_SEX, VIC_AGE_GROUP, VIC_SEX, X_COORD_CD,
+#       Y_COORD_CD, Latitude, Longitude, and Lon_Lat
+data = raw_data %>%
+    select(-c(INCIDENT_KEY, OCCUR_TIME, BORO,
+              LOC_OF_OCCUR_DESC, PRECINCT, JURISDICTION_CODE,
+              LOC_CLASSFCTN_DESC, LOCATION_DESC, PERP_AGE_GROUP,
+              PERP_SEX, VIC_AGE_GROUP, VIC_SEX, X_COORD_CD,
+              Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+```
+
+Next, we remove rows with missing data. We opted not to impute missing data due to the sensitivity of the subject matter. We find that missing values were also entered as strings such as `"(null)"` or `"UNKNOWN"`, so we remove rows containing these strings from our data as well.
+
+```{r, echo = FALSE}
+
+# Remove rows with missing data
+data = data[complete.cases(data), ]
+
+# Remove rows containing strings as missing values
+data = data %>%
+    filter(!grepl("(null)", PERP_RACE)) %>%
+    filter(!grepl("UNKNOWN", PERP_RACE)) %>%
+    filter(!grepl("UNKNOWN", VIC_RACE))
+```
+
+Out of the $16230$ observations left in our data, there are only $2$ incidents where the `PERP_RACE` was reported as "AMERICAN INDIAN/ALASKAN NATIVE" and only $5$ incidents where the `VIC_RACE` was reported as "AMERICAN INDIAN/ALASKAN NATIVE". Because our counts in these categories are too small to fairly represent these groups, these rows were removed.
+
+```{r, echo = FALSE}
+
+# Remove rows containing "AMERICAN INDIAN/ALASKA NATIVE" in
+#     `PERP_RACE` or `VIC_RACE`
+data = data %>%
+    filter(!grepl("AMERICAN INDIAN/ALASKAN NATIVE",
+                  PERP_RACE)) %>%
+    filter(!grepl("AMERICAN INDIAN/ALASKAN NATIVE", VIC_RACE))
+```
+
+We change the `OCCUR_DATE` column from a character object to a date object.
+
+```{r, echo = FALSE}
+
+# Change OCCUR_DATE to date object
+data$OCCUR_DATE = as.Date(data$OCCUR_DATE, "%m/%d/%Y")
+```
+
+We set the variable `STATISTICAL_MURDER_FLAG` to a numeric object and replace "TRUE" with $1$ and "FALSE" with $2$. This allows us to get a quick sum of shooting incidents that ended in fatalities.
+
+```{r, echo = FALSE}
+
+# Change STATISTICAL_MURDER_FLAG to numeric object
+cols = sapply(data, is.logical)
+data[, cols] = lapply(data[, cols], as.numeric)
+```
+
+Our final dataset for analysis contains $16223$ entries across $4$ variables. The summary for our newly cleaned dataset is found below.
+
+```{r, echo = FALSE}
+
+# Give a summary of newly cleaned and transformed data
+summary(data)
+```
+
+------------------------------------------------------------------------
+
+### **Initial Visualizations**
+
+Before we begin our formal analysis, we create two initial visualizations of our data.
+
+The bar plot below shows the number of victims by race for each of the shooting incidents. Gray bars represent non-fatal incidents while navy bars represent fatalities. While a first glance shows us that most incidents were thankfully non-fatal, Black victims still accounted for the majority of both non-fatal and fatal shootings.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by VIC_RACE and 
+#       STATISTICAL_MURDER_FLAG
+VIC_RACE = data %>%
+    group_by(VIC_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = "drop") %>%
+    mutate("rate" = round(count / sum(count), 4))
+VIC_RACE
+
+# Create the bar plot
+ggplot(VIC_RACE,
+       aes(x = VIC_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents by Victim Race and Fatality Status",
+        x = "Victim Race", y = NULL,
+        fill = "Fatality Status \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+We see a similar result when we plot the number of perpetrators by race. Again, Black perpetrators accounted for the majority of both non-fatal and fatal shooting incidents.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by PERP_RACE and 
+#       STATISTICAL_MURDER_FLAG
+PERP_RACE = data %>%
+    group_by(PERP_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = "drop") %>%
+    mutate("rate" = round(count / sum(count), 4))
+PERP_RACE
+
+# Create the bar plot
+ggplot(PERP_RACE,
+       aes(x = PERP_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents by Perpetrator Race and Fatality Status",
+        x = "Perpetrator Race",
+        y = NULL,
+        fill = "Fatality Status \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+------------------------------------------------------------------------
+
+### **Analysis**
+
+Further analysis will look into whether or not the rates of perpetrators by race found in the dataset as a whole are also seen across all victim races for both non-fatal and fatal shooting events. To do this, we apply a chi-squared goodness of fit test using the the values from our initial visualization plot for perpetrators by race as our expected values. We set our significance level to $\alpha = 0.05$. Based on how both preliminary visualizations showed that victims by race and perpetrators by race were overwhelmingly Black, we hypothesize that the city-wide expected rates for perpetrator by race are not reflected across all victim races.
+
+```{r, echo = FALSE}
+
+# Expected values for chi-squared test
+expected = PERP_RACE$rate
+
+# Level of significance
+alpha = 0.05
+```
+
+To get the observations for our chi-squared analysis, we subset our data to create separate samples dividing victims by race. We then grouped each sample by perpetrator race.
+
+```{r, echo = FALSE}
+
+# Subset sample of Asian / Pacific Islander victims
+VIC_RACE_ASIAN_PI = data %>%
+    filter(VIC_RACE == "ASIAN / PACIFIC ISLANDER") %>%
+    group_by(VIC_RACE, PERP_RACE, OCCUR_DATE) %>%
+    select(OCCUR_DATE, everything())
+
+# Subset sample of Black victims
+VIC_RACE_BLACK = data %>%
+    filter(VIC_RACE == "BLACK") %>%
+    group_by(VIC_RACE, PERP_RACE, OCCUR_DATE) %>%
+    select(OCCUR_DATE, everything())
+
+# Subset sample of Black Hispanic victims
+VIC_RACE_BLACK_HISP = data %>%
+    filter(VIC_RACE == "BLACK HISPANIC") %>%
+    group_by(VIC_RACE, PERP_RACE, OCCUR_DATE) %>%
+    select(OCCUR_DATE, everything())
+
+# Subset sample of White victims
+VIC_RACE_WHITE = data %>%
+    filter(VIC_RACE == "WHITE") %>%
+    group_by(VIC_RACE, PERP_RACE, OCCUR_DATE) %>%
+    select(OCCUR_DATE, everything())
+
+# Subset sample of White Hispanic victims
+VIC_RACE_WHITE_HISP = data %>%
+    filter(VIC_RACE == "WHITE HISPANIC") %>%
+    group_by(VIC_RACE, PERP_RACE, OCCUR_DATE) %>%
+    select(OCCUR_DATE, everything())
+```
+
+For each of our samples by victim race, we generated two bar plots. The first bar plot shows the numbers of victims for both non-fatal and fatal shooting incidents by perpetrator race. The second bar plot shows how our observed values within our samples compare to the city-wide expected values.
+
+##### **Asian / Pacific Islander Victims**
+
+For Asian / Pacific Islander victims, the majority of both non-fatal and fatal shooting incidents were due to Black perpetrators, followed by Asian / Pacific Islander perpetrators. The observed rate of non-fatal shooting incidents by Black perpetrators was significantly lower than expected while the observed rates for both non-fatal and fatal shooting incidents by Asian / Pacific Islander perpetrators were significantly higher than expected.
+
+The observed rate for fatal shooting incidents due to Black perpetrators was lower than expected, but not significantly so. Observed rates for both non-fatal and fatal shooting incidents due to Black Hispanic, White, and White Hispanic perpetrators were not found to be significantly different from the city-wide expected values.
+
+We arrived at a chi-squared test statistic of $3.9821$ for this sample with $9$ degrees of freedom and a p-value of $0.9126$. Since our p-value is higher than our significance level, $\alpha = 0.05$, we fail to reject our null hypothesis for this sample and conclude that the city-wide rates of perpetrators by race do not reflect what we see among Asian / Pacific Islander victims.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by PERP_RACE and 
+#       STATISTICAL_MURDER_FLAG
+data_VIC_RACE_ASIAN_PI = VIC_RACE_ASIAN_PI %>%
+    group_by(PERP_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = 'drop') %>%
+    mutate("rate" = round(count / sum(count), 4))
+data_VIC_RACE_ASIAN_PI
+
+# Create the bar plot
+ggplot(data_VIC_RACE_ASIAN_PI,
+       aes(x = PERP_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents for Asian / Pacific Islander Victims \n by Perpetrator Race and Fatality Status",
+        x = "Perpetrator Race",
+        y = NULL,
+        fill = "Fatality Status \ \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+observed = data_VIC_RACE_ASIAN_PI$rate
+
+# Create a data frame for plotting
+plot_VIC_RACE_ASIAN_PI = data.frame(
+    PERP_RACE = paste(
+        data_VIC_RACE_ASIAN_PI$PERP_RACE, "-",
+        data_VIC_RACE_ASIAN_PI$STATISTICAL_MURDER_FLAG),
+    Observed = round(observed, 4),
+    Expected = round(expected, 4))
+
+# Calculate deviations between observed and expected values
+plot_VIC_RACE_ASIAN_PI = plot_VIC_RACE_ASIAN_PI %>%
+    mutate(deviation = round(Observed - Expected, 4),
+           "abs(deviation)" = round(abs(deviation), 4))
+plot_VIC_RACE_ASIAN_PI
+
+# Plot observed and expected values with deviations
+ggplot(plot_VIC_RACE_ASIAN_PI,
+    aes(x = PERP_RACE, y = Observed,
+        fill = "Observed")) +
+    geom_bar(stat = "identity", position = "dodge",
+             width = 0.5) +
+    geom_bar(aes(y = Expected, fill = "Expected"),
+             stat = "identity", position = "dodge", 
+             width = 0.5, alpha = 0.5) +
+    geom_errorbar(aes(ymin = pmin(Observed, Expected),
+                      ymax = pmax(Observed, Expected), 
+                      color = "Deviation"), 
+                  width = 0.2,
+                  position = position_dodge(width = 0.5)) +
+    labs(
+        title = "Observed vs. Expected Rates for Asian  Pacific Islander \n Shooting Victims by Perpetrator Race",
+        x = "Perpetrator Race \n (0 = Non-Fatal, \ 1 = Fatal)",
+        y = NULL) +
+    scale_fill_manual(values = c("Observed" = "gray",
+                                 "Expected" = "lightblue"),
+                      name = "Category") +
+    scale_color_manual(values = "red",
+                       name = "Deviation") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+# Chi-squared test statistic
+chisq_stat = round(sum((observed - expected)^2 / expected), 4)
+paste("chisq_stat =", round(chisq_stat, 4))
+
+# Degrees of Freedom
+df = length(observed) - 1
+paste("df =", df)
+
+# p-value
+p_val = round(1 - pchisq(chisq_stat, df), 4)
+paste("p_val =", round(p_val, 4))
+```
+
+##### **Black Victims**
+
+For Black victims, the majority of perpetrators were also Black for both non-fatal and fatal shooting incidents, followed by White Hispanic perpetrators. While the observed rate of non-fatal shooting incidents due to Black perpetrators was significantly higher than expected, the observed rate of non-fatal shooting incidents by White Hispanic perpetrators was significantly lower than expected.
+
+The observed rate of fatal shootings due to Black perpetrators was lower than expected, but not significantly so. Likewise, the observed rate of fatal shootings due to White Hispanic perpetrators was higher than expected, but not significantly so. Observed rates for both non-fatal and fatal shootings due to Asian / Pacific Islander, Black Hispanic, and White perpetrators were not found to be significantly different from expected values.
+
+We arrived at a chi-squared test statistic of $0.0892$ for this sample with $9$ degrees of freedom and a p-value of $0.9999$. Since this p-value is higher than our significance level, $\alpha = 0.05$, we fail to reject our null hypothesis for this sample and conclude that the city-wide rates of perpetrators by race do not reflect what we see among Black victims.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by PERP_RACE and 
+#       STATISTICAL_MURDER_FLAG
+data_VIC_RACE_BLACK = VIC_RACE_BLACK %>%
+    group_by(PERP_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = 'drop') %>%
+    mutate("rate" = round(count / sum(count), 4))
+data_VIC_RACE_BLACK
+
+# Create the bar plot
+ggplot(data_VIC_RACE_BLACK,
+       aes(x = PERP_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents for Black Victims \n by Perpetrator Race and Fatality Status",
+        x = "Perpetrator Race",
+        y = NULL,
+        fill = "Fatality Status \ \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+observed = data_VIC_RACE_BLACK$rate
+
+# Create a data frame for plotting
+plot_VIC_RACE_BLACK = data.frame(
+    PERP_RACE = paste(
+        data_VIC_RACE_BLACK$PERP_RACE, "-",
+        data_VIC_RACE_BLACK$STATISTICAL_MURDER_FLAG),
+    Observed = round(observed, 4),
+    Expected = round(expected, 4))
+
+# Calculate deviations between observed and expected values
+plot_VIC_RACE_BLACK = plot_VIC_RACE_BLACK %>%
+    mutate(deviation = round(Observed - Expected, 4),
+           "abs(deviation)" = round(abs(deviation), 4))
+plot_VIC_RACE_BLACK
+
+# Plot observed and expected values with deviations
+ggplot(plot_VIC_RACE_BLACK,
+       aes(x = PERP_RACE, y = Observed,
+           fill = "Observed")) +
+    geom_bar(stat = "identity", position = "dodge",
+             width = 0.5) +
+    geom_bar(aes(y = Expected, fill = "Expected"),
+             stat = "identity", position = "dodge", 
+             width = 0.5, alpha = 0.5) +
+    geom_errorbar(aes(ymin = pmin(Observed, Expected),
+                      ymax = pmax(Observed, Expected), 
+                      color = "Deviation"), 
+                  width = 0.2,
+                  position = position_dodge(width = 0.5)) +
+    labs(
+        title = "Observed vs. Expected Rates for Black \n Shooting Victims by Perpetrator Race",
+        x = "Perpetrator Race \n (0 = Non-Fatal, \ 1 = Fatal)",
+        y = NULL) +
+    scale_fill_manual(values = c("Observed" = "gray",
+                                 "Expected" = "lightblue"),
+                      name = "Category") +
+    scale_color_manual(values = "red",
+                       name = "Deviation") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+# Chi-squared test statistic
+chisq_stat = round(sum((observed - expected)^2 / expected), 4)
+paste("chisq_stat =", chisq_stat)
+
+# Degrees of Freedom
+df = length(observed) - 1
+paste("df =", df)
+
+# p-value
+p_val = plyr::round_any(1 - pchisq(chisq_stat, df),
+                        accuracy = 0.0001, f = floor)
+paste("p_val =", p_val)
+```
+
+##### **Black Hispanic Victims**
+
+For Black Hispanic victims, the majority of both non-fatal and fatal shooting incidents are due to Black perpetrators, followed by White Hispanic perpetrators, then Black Hispanic perpetrators. Observed rates for both non-fatal and fatal shooting incidents due to Black perpetrators were found to significantly lower than city-wide expected values. On the other hand, observed rates for non-fatal shooting incidents by both Black Hispanic and White Hispanic perpetrators were significantly higher than expected..
+
+Observed rates of fatal shooting incidents for both Black Hispanic and White Hispanic perpetrators were lower than expected, but no significantly so. Observed rates for both non-fatal and fatal shootings due to Asian / Pacific Islander and White perpetrators were not found to be significantly different from expected values.
+
+We arrived at a chi-squared test statistic of $0.3631$ for this sample with $9$ degrees of freedom and a p-value of $0.9999$. Since this p-value is higher than our significance level, $\alpha = 0.05$, we fail to reject our null hypothesis for this sample and conclude that the city-wide rates of perpetrators by race do not reflect what we see among Black Hispanic victims.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by PERP_RACE and 
+#       STATISTICAL_MURDER_FLAG
+data_VIC_RACE_BLACK_HISP = VIC_RACE_BLACK_HISP %>%
+    group_by(PERP_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = 'drop') %>%
+    mutate("rate" = round(count / sum(count), 4))
+data_VIC_RACE_BLACK_HISP
+
+# Create the bar plot
+ggplot(data_VIC_RACE_BLACK_HISP,
+       aes(x = PERP_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents for Black Hispanic Victims \n by Perpetrator Race and Fatality Status",
+        x = "Perpetrator Race",
+        y = NULL,
+        fill = "Fatality Status \ \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+observed = data_VIC_RACE_BLACK_HISP$rate
+
+# Create a data frame for plotting
+plot_VIC_RACE_BLACK_HISP = data.frame(
+    PERP_RACE = paste(
+        data_VIC_RACE_BLACK_HISP$PERP_RACE, "-",
+        data_VIC_RACE_BLACK_HISP$STATISTICAL_MURDER_FLAG),
+    Observed = round(observed, 4),
+    Expected = round(expected, 4))
+
+# Calculate deviations between observed and expected values
+plot_VIC_RACE_BLACK_HISP = plot_VIC_RACE_BLACK_HISP %>%
+    mutate(deviation = round(Observed - Expected, 4),
+           "abs(deviation)" = round(abs(deviation), 4))
+plot_VIC_RACE_BLACK_HISP
+
+# Plot observed and expected values with deviations
+ggplot(plot_VIC_RACE_BLACK_HISP,
+       aes(x = PERP_RACE, y = Observed,
+           fill = "Observed")) +
+    geom_bar(stat = "identity", position = "dodge",
+             width = 0.5) +
+    geom_bar(aes(y = Expected, fill = "Expected"),
+             stat = "identity", position = "dodge", 
+             width = 0.5, alpha = 0.5) +
+    geom_errorbar(aes(ymin = pmin(Observed, Expected),
+                      ymax = pmax(Observed, Expected), 
+                      color = "Deviation"), 
+                  width = 0.2,
+                  position = position_dodge(width = 0.5)) +
+    labs(
+        title = "Observed vs. Expected Rates for Black Hispanic \n Shooting Victims by Perpetrator Race",
+        x = "Perpetrator Race \n (0 = Non-Fatal, \ 1 = Fatal)",
+        y = NULL) +
+    scale_fill_manual(values = c("Observed" = "gray",
+                                 "Expected" = "lightblue"),
+                      name = "Category") +
+    scale_color_manual(values = "red",
+                       name = "Deviation") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+# Chi-squared test statistic
+chisq_stat = round(sum((observed - expected)^2 / expected), 4)
+paste("chisq_stat =", chisq_stat)
+
+# Degrees of Freedom
+df = length(observed) - 1
+paste("df =", df)
+
+# p-value
+p_val = plyr::round_any(1 - pchisq(chisq_stat, df),
+                        accuracy = 0.0001, f = floor)
+paste("p_val =", p_val)
+```
+
+##### **White Victims**
+
+For White victims, the majority of both non-fatal and fatal shooting incidents are due to Black perpetrators, followed by White perpetrators. Interestingly, observed rates for both non-fatal and fatal shooting incidents due to Black perpetrators are significantly lower than city-wide expected values, while observed rates for both types of shooting incidents due to White perpetrators are significantly higher.
+
+Observed rates for both non-fatal and fatal shootings due to Asian / Pacific Islander, Black Hispanic, and White Hispanic perpetrators were not found to be significantly different from expected values.
+
+We arrived at a chi-squared test statistic of $5.1295$ for this sample with $9$ degrees of freedom and a p-value of $0.8229$. Although this p-value is significantly lower than what we see from the Asian / Pacific Islander, Black, and Black Hispanic samples, it is still higher than the significance level, $\alpha = 0.05$, so we still fail to reject our null hypothesis for this sample and conclude that the city-wide rates of perpetrators by race do not reflect what we see among White victims.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by PERP_RACE and 
+#       STATISTICAL_MURDER_FLAG
+data_VIC_RACE_WHITE = VIC_RACE_WHITE %>%
+    group_by(PERP_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = 'drop') %>%
+    mutate("rate" = round(count / sum(count), 4))
+data_VIC_RACE_WHITE
+
+# Create the bar plot
+ggplot(data_VIC_RACE_WHITE,
+       aes(x = PERP_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents for White Victims \n by Perpetrator Race and Fatality Status",
+        x = "Perpetrator Race",
+        y = NULL,
+        fill = "Fatality Status \ \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+observed = data_VIC_RACE_WHITE$rate
+
+# Create a data frame for plotting
+plot_VIC_RACE_WHITE = data.frame(
+    PERP_RACE = paste(
+        data_VIC_RACE_WHITE$PERP_RACE, "-",
+        data_VIC_RACE_WHITE$STATISTICAL_MURDER_FLAG),
+    Observed = round(observed, 4),
+    Expected = round(expected, 4))
+
+# Calculate deviations between observed and expected values
+plot_VIC_RACE_WHITE = plot_VIC_RACE_WHITE %>%
+    mutate(deviation = round(Observed - Expected, 4),
+           "abs(deviation)" = round(abs(deviation), 4))
+plot_VIC_RACE_WHITE
+
+# Plot observed and expected values with deviations
+ggplot(plot_VIC_RACE_WHITE,
+       aes(x = PERP_RACE, y = Observed,
+           fill = "Observed")) +
+    geom_bar(stat = "identity", position = "dodge",
+             width = 0.5) +
+    geom_bar(aes(y = Expected, fill = "Expected"),
+             stat = "identity", position = "dodge", 
+             width = 0.5, alpha = 0.5) +
+    geom_errorbar(aes(ymin = pmin(Observed, Expected),
+                      ymax = pmax(Observed, Expected), 
+                      color = "Deviation"), 
+                  width = 0.2,
+                  position = position_dodge(width = 0.5)) +
+    labs(
+        title = "Observed vs. Expected Rates for White \n Shooting Victims by Perpetrator Race",
+        x = "Perpetrator Race \n (0 = Non-Fatal, \ 1 = Fatal)",
+        y = NULL) +
+    scale_fill_manual(values = c("Observed" = "gray",
+                                 "Expected" = "lightblue"),
+                      name = "Category") +
+    scale_color_manual(values = "red",
+                       name = "Deviation") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+# Chi-squared test statistic
+chisq_stat = sum((observed - expected)^2 / expected)
+paste("chisq_stat =", round(chisq_stat, 4))
+
+# Degrees of Freedom
+df = length(observed) - 1
+paste("df =", df)
+
+# p-value
+p_val = round(1 - pchisq(chisq_stat, df), 4)
+paste("p_val =", p_val)
+```
+
+##### **White Hispanic Victims**
+
+For White Hispanic victims, the majority of both non-fatal and fatal shooting incidents are due to Black perpetrators, followed by White Hispanic perpetrators. However, Black perpetrators actually had significantly lower observed rates both non-fatal and fatal shooting incidents than expected, while these observed were significantly higher than expected for White Hispanic perpetrators.
+
+Observed rates for both non-fatal and fatal shootings due to Asian / Pacific Islander, Black Hispanic, and White perpetrators were not found to be significantly different from expected values.
+
+We arrived at a chi-squared test statistic of $0.4863$ for this sample with $9$ degrees of freedom and a p-value of $0.9999$. Since this p-value is higher than our significance level, $\alpha = 0.05$, we fail to reject our null hypothesis for this sample and conclude that the city-wide rates of perpetrators by race do not reflect what we see among White Hispanic victims.
+
+```{r, echo = FALSE}
+
+#  Get counts and percentages by PERP_RACE and 
+#       STATISTICAL_MURDER_FLAG
+data_VIC_RACE_WHITE_HISP = VIC_RACE_WHITE_HISP %>%
+    group_by(PERP_RACE, STATISTICAL_MURDER_FLAG) %>%
+    summarize(count = n(), .groups = 'drop') %>%
+    mutate("rate" = round(count / sum(count), 4))
+data_VIC_RACE_WHITE_HISP
+
+# Create the bar plot
+ggplot(data_VIC_RACE_WHITE_HISP,
+       aes(x = PERP_RACE, y = count,
+           fill = factor(STATISTICAL_MURDER_FLAG))) +
+    geom_bar(stat = "identity", position = "dodge") +
+    labs(
+        title = "Shooting Incidents for White Hispanic Victims \n by Perpetrator Race and Fatality Status",
+        x = "Perpetrator Race", y = NULL,
+        fill = "Fatality Status \ \n(0 = Non-Fatal, \ 1 = Fatal)") +
+    scale_fill_manual(values = c("gray", "navy")) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+observed = data_VIC_RACE_WHITE_HISP$rate
+
+# Create a data frame for plotting
+plot_VIC_RACE_WHITE_HISP = data.frame(
+    PERP_RACE = paste(
+        data_VIC_RACE_WHITE_HISP$PERP_RACE, "-",
+        data_VIC_RACE_WHITE_HISP$STATISTICAL_MURDER_FLAG),
+    Observed = round(observed, 4),
+    Expected = round(expected, 4))
+
+# Calculate deviations between observed and expected values
+plot_VIC_RACE_WHITE_HISP = plot_VIC_RACE_WHITE_HISP %>%
+  mutate(deviation = round(Observed - Expected, 4),
+         "abs(deviation)" = round(abs(deviation), 4))
+plot_VIC_RACE_WHITE_HISP
+
+# Plot observed and expected values with deviations
+ggplot(plot_VIC_RACE_WHITE_HISP,
+       aes(x = PERP_RACE, y = Observed,
+           fill = "Observed")) +
+    geom_bar(stat = "identity", position = "dodge",
+             width = 0.5) +
+    geom_bar(aes(y = Expected, fill = "Expected"),
+             stat = "identity", position = "dodge", 
+             width = 0.5, alpha = 0.5) +
+    geom_errorbar(aes(ymin = pmin(Observed, Expected),
+                      ymax = pmax(Observed, Expected), 
+                      color = "Deviation"), 
+                  width = 0.2,
+                  position = position_dodge(width = 0.5)) +
+    labs(
+        title = "Observed vs. Expected Rates for White Hispanic \n Shooting Victims by Perpetrator Race",
+        x = "Perpetrator Race \n (0 = Non-Fatal, \ 1 = Fatal)",
+        y = NULL) +
+    scale_fill_manual(values = c("Observed" = "gray",
+                                 "Expected" = "lightblue"),
+                      name = "Category") +
+    scale_color_manual(values = "red",
+                       name = "Deviation") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))
+```
+
+```{r, echo = FALSE}
+
+# Chi-squared test statistic
+chisq_stat = round(sum((observed - expected)^2 / expected), 4)
+paste("chisq_stat =", chisq_stat)
+
+# Degrees of Freedom
+df = length(observed) - 1
+paste("df =", df)
+
+# p-value
+p_val = plyr::round_any(1 - pchisq(chisq_stat, df),
+                        accuracy = 0.0001, f = floor)
+paste("p_val =", p_val)
+```
+
+------------------------------------------------------------------------
+
+#### **Additional Questions**
+
+Since this analysis only covered data contained in the dataset mentioned at the beginning of this report, we were not able to include information on population within New York City. Does this data reflect the demographic proportions of this population? Future studies should include that as a contributing factor.
+
+------------------------------------------------------------------------
+
+### **Conclusions**
+
+The results from our analysis are summarized in the table below.
+
+| **Victim Race** | Incident Type | **Significant Deviation**s in Sample | Prepetrator Race | p-value |
+|---------------|---------------|---------------|---------------|---------------|
+| Asian / Pacific Islander | Non-Fatal | $-0.1517$ | Black | $0.9126$ |
+| Asian / Pacific Islander | Non-Fatal | $0.1094$ | Asian / Pacific Islander | $0.9126$ |
+| Asian / Pacific Islander | Fatal | $0.0836$ | Asian / Pacific Islander | $0.9126$ |
+| Black | Non-Fatal | $0.1028$ | Black | $0.9999$ |
+| Black | Non-Fatal | $-0.0578$ | White Hispanic | $0.9999$ |
+| Black Hispanic | Non-Fatal | $-0.1739$ | Black | $0.9999$ |
+| Black Hispanic | Non-Fatal | $0.1114$ | Black Hispanic | $0.9999$ |
+| Black Hispanic | Non-Fatal | $0.0898$ | White Hispanic | $0.9999$ |
+| Black Hispanic | Fatal | $-0.0589$ | Black | $0.9999$ |
+| White | Non-Fatal | $-0.2694$ | Black | $0.8229$ |
+| White | Non-Fatal | $0.1689$ | White | $0.8229$ |
+| White | Fatal | $0.1295$ | White | $0.8229$ |
+| White | Fatal | $-0.0690$ | Black | $0.8229$ |
+| White Hispanic | Non-Fatal | $-0.2291$ | Black | $0.9999$ |
+| White Hispanic | Non-Fatal | $0.1673$ | White Hispanic | $0.9999$ |
+| White Hispanic | Fatal | $0.0590$ | White Hispanic | $0.9999$ |
+| White Hispanic | Fatal | $-0.0555$ | Black | $0.9999$ |
+
+For all samples of victims by race, we see that the highest numbers for both non-fatal and fatal shooting incidents are due to Black perpetrators. However, for almost all these samples, the actual observed rates for both non-fatal and fatal shooting incidents due to Black perpetrators were significantly lower than expected. Exceptions to this are found among Asian / Pacific Islander and Black victims, for whom observed rates of fatal shooting incidents due to Black perpetrators were not found to be significantly different from what was expected. Among Black victims, the observed rate of non-fatal shooting incidents due to Black perpetrators was actually significantly higher than expected. This suggests that gun violence due to Black perpetrators may be over-reported among Asian / Pacific Islander, Black Hispanic, White, and White Hispanic victims, particularly for non-fatal shooting events.
+
+For the majority of victim races (Asian / Pacific Islander, Black Hispanic, White, and White Hispanic ), observed rates of both non-fatal and fatal shooting incidents due to perpetrators from their own race were significantly higher than expected, suggesting a higher levels of intra-racial violence within these communities. We also see this with Black victims where the observed rate for non-fatal shooting incidents due to Black perpetrators was significantly higher than expected, suggesting higher levels of intra-racial violence within this community as well.
+
+When comparing observed rates of shooting incidents to city-wide expected values, all samples showed a significantly high p-value, leading us to conclude that the city-wide rates of shooting incidents by perpetrator race are not reflected across the victim race groups. While this still applies to our sample of White victims, the significantly lower p-value for that sample suggests that statistics may be under-reported or over-reported for this group.
+
+#### **Possible Sources of Bias**
+
+Many people might be surprised at the levels of intra-racial violence found in this study since inter-racial violence is more commonly portrayed in media. The communities where this violence occurred may have higher levels of intra-racial interaction than inter-racial interaction. Conflict in these contexts would unfortunately be more likely to contribute to intra-racial gun violence.
