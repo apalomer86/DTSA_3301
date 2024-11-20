@@ -1,0 +1,186 @@
+# PRESENTATION SCRIPT
+
+---
+### SLIDE 1
+
+Welcome to my presentation on this data analysis project over the NYPD Shooting Data. As you can see from the title, we'll be focusing on what the data can tell us about intraracial gun violence.
+
+---
+### SLIDE 2
+
+To do that, we'll be comparing rates of non-fatal and fatal shooting incidents between different racial groups in New York City: (Asian Pacific Islander, Black, Black Hispanic, White, and White Hispanic).
+
+We'll see that while the majority of perpetrators are reported to be Black, our analysis shows that shooting events are actually more likely to happen between individuals of the same race, hence intra-racial gun violence.
+
+---
+### SLIDE 3
+
+For this analysis, we used the NYPD Shooting Incident dataset. At the time of recording, the dataset contains records for every shooting event from 2006 through 2023. Check out the QR code if you want to look at the data for yourself.
+
+---
+### SLIDE 4
+
+When we looked at the raw data, we found that it had 28,652 shooting incidents described over 21 variables.
+
+That's a lot of variables, but not all of them were needed for our analysis!
+
+---
+### SLIDE 5
+
+And on this slide, you can see how that looks pretty clunky number of variables to be working with.
+
+---
+### SLIDE 6
+
+We started cleaning and transforming our data by getting rid of the variables we didn't need.
+
+This leaves us with just four variables: OCCUR DATE (date the shooting incident occurred), STATISTICAL MURDER FLAG (where "TRUE" indicates the shooting incident was fatal and "FALSE" indicates that it was not), PERP RACE (race of the perpetrator), and VIC RACE (race of the victim).
+
+That takes care of a lot of dimension reduction for us right off the bat.
+
+---
+### SLIDE 7
+
+We also removed rows with missing data and invalid data entered as strings like "(null)" or "UNKNOWN". While it would have been possible to impute missing data, we opted not to do that due to the sensitivity of the subject matter.
+
+We also removed rows were PERP_RACE and VIC_RACE were reported as "AMERICAN INDIAN / ALASKAN NATIVE" because there were really small counts in those categories, about less than or equal to 5. It's not that these groups aren't significant, but we didn't feel that those small numbers would be a fair representation of these groups.
+
+We also set STATISTICAL_MURDER_FLAG to a numeric object and replaced "TRUE" with 1 and "FALSE" with 0. This lets us get a quick sum of how many shooting incidents were fatal.
+
+---
+### SLIDE 8
+
+We started off with a couple of preliminary visualizations before we jumped into formal analysis of our data.
+
+---
+### SLIDE 9
+
+The plot on the right shows the number of victims by race and fatality status of the shooting incident.
+
+Fortunately, most incidents were non-fatal. We can see that with these big gray bars. But it's still concerning that the biggest gray bar and the biggest navy bar indicating fatal incidents mean that majority of victims were Black.
+
+---
+### SLIDE 10
+
+We made a similar plot showing the the number of perpetrators by race and fatality status of the shooting incident. Again, most incidents were non-fatal, but we can see from the biggest gray and navy bars that most perpetrators were Black.
+
+Well that seems heavily skewed. So, let's do a chi-squared analysis to see just how skewed it is.
+
+If you look up at the blue box in the upper right-hand corner, we have the rates of shootings by perpetrator race and fatality status for the whole dataset. These will be the expected values we'll be working with for our chi-squared analysis.
+
+---
+### SLIDE 11
+
+So here's our hypothesis.
+
+The expected rates for perpetrator by race are NOT reflected across all victim races.
+
+We already said we'd be attacking with a chi-squared analysis and explained how we got our expected values. Now to get our observed values, we'll be breaking up the dataset into samples divided by victim race. We're going to see just how well the overall rates for the dataset match with with what we see across all victim races. (Spoiler: they don't.)
+
+We set our significance level to alpha = 0.05. Now let's get into the results.
+
+---
+### SLIDE 12
+
+For victims of all races, Black perpetrators were reported to account for the majority of both non-fatal and fatal shooting incidents. That fits in with what we saw in our initial visualizations.
+
+BUT...chi-squared analysis shows observed rates of Black perpetrators across victim races are actually lower than expected.
+
+In fact, the data suggests that rates of victims being shot by someone of their own race (for both non-fatal and fatal shooting incidents) are higher than expected. Again, you're going to see a pattern of intra-racial gun violence.
+
+---
+### SLIDE 13
+
+The high p-value we get with Asian / Pacific Islander victims tells us that the expected values do not match this population.
+
+---
+### SLIDE 14
+
+And when we look at the graphs, that big light blue area in the bar for non-fatal shootings by Black perpetrators tells us that the actual counts are much lower than expected.
+
+The big gray areas in the bars for both non-fatal and fatal shootings by Asian / Pacific Islander perpetrators tells us that those actual counts are much higher than expected. So we can see some evidence of Asian on Asian violence there.
+
+---
+### SLIDE 15
+
+The high p-value we get with Black victims tells us that the expected values do not match this population. In fact, that number is practically 1, so I'd say it doesn't match at all.
+
+---
+### SLIDE 16
+
+When we look at the graphs, the big gray area in the box for non-fatal shootings by Black perpetrators tells us that the actual counts are much higher than expected, supporting the idea of Black on Black violence.
+
+---
+### SLIDE 17
+
+We see another high p-value with Black Hispanic victims that's also practically 1. That tells us expected rates don't match this sample at all either.
+
+---
+### SLIDE 18
+
+If we look at the bars for both non-fatal and fatal shootings by Black perpetrators, we'll see the actual counts were lower than expected.
+
+On the other hand, the big gray areas in the bars for non-fatal and fatal shootings by White Hispanic and Black Hispanic perpetrators are much higher than expected, giving us some support for Black Hispanic on Black Hispanic violence.
+
+---
+### SLIDE 19
+
+When we looked at our sample of White victims, we got a p-value that's significantly lower that what we've seen so far with the other samples, but it's still definitely larger than our significance level of alpha = 0.05, so we can still say the expected values don't match up at all with this sample.
+
+That said, the big significant difference from the other p-values in our analysis tells us that the data for this sample may have been over-reported or under-reported.
+
+---
+### SLIDE 20
+
+When we look at the graphs, you'll see that the light blue areas in the bars for non-fatal and fatal shootings by Black perpetrators tells us the actual counts in these categories are way lower than expected.
+
+These big gray areas in the bars for non-fatal and fatal shootings by White perpetrators tells the actual counts in these categories were actually way higher than expected, so there's some support for White on White violence there.
+
+---
+### SLIDE 21
+
+Finally, when we got another high p-value that's practically 1 when we looked at our sample of White Hispanic victims. That tells us the expected values do not match up at with this population either.
+
+---
+### SLIDE 22
+
+Just like we saw with our sample of White victims, when we look at the graphs for White Hispanic victims, you'll see that the light blue areas in the bars for non-fatal and fatal shootings by Black perpetrators tells us the actual counts in these categories are way lower than expected.
+
+These big gray areas in the bars for non-fatal and fatal shootings by White Hispanic perpetrators tells the actual counts in these categories were actually way higher than expected, so there's some support for White Hispanic on White Hispanic violence there.
+
+---
+### SLIDE 23
+
+The table on this slide summarizes all the significant deviations when we ran the chi-squared test on all our samples for victims by race.
+
+---
+### SLIDE 24
+
+Here's my biggest question: Is this data actually reflective of New York City's population demographics?
+
+It was heavily skewed towards perpetrators being Black. I HIGHLY doubt New York is overwhelmingly Black to that extent, but we don't have data to verify that so I can't say for sure.
+
+---
+### SLIDE 25
+
+So here are the conclusions we've reached:
+
+For both non-fatal and fatal shooting events, victims were more likely to be shot by perpetrators of their own race.
+
+All visualizations showed that the the majority of perpetrators were Black, but they may be over-represented in the current data.
+
+Overall rates of perpetrators by race did NOT fit neatly into what we saw with each sample when divided by victim race.
+
+Significantly lower p-value for White victims suggests that statistics may be over-reported or under-reported for this group.
+
+---
+### SLIDE 26
+
+As for possible sources of bias, inter-racial violence is more commonly portrayed in the media instead of the INTRA-racial violence we see in this analysis.
+
+That said, communities where violence occurs may also have higher levels of intra-racial interaction. Unfortunately, this means that conflict in those contexts can also extend to intra-racial gun violence.
+
+---
+### SLIDE 27
+
+Thanks so much for listening to my presentation! If you want more info, feel free to check the website below to find the full Rmd file with all the code use in the analysis.
