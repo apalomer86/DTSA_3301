@@ -1,0 +1,25 @@
+# ELEVATOR PITCH VIDEO SCRIPT
+
+---
+
+*The following script and directions below were entered into https://ai.invideo.io/ to create a short elevator pitch video for this data analysis project.*
+
+---
+
+"The phrase Black-on-Black violence is controversial, but you could easily replace Black with any race. Although most crime in the media is portrayed as interracial, the reality is most violent crime is actually INTRA-racial."
+
+"Join us as we dig into data the New York Police Department on shooting incidents from 2006 through 2023. We'll find that although most shooting victims and perpetrators are reported to be Black, victims are most likely to be shot be someone of the same race."
+
+"Does this mean Black on Black crime is overreported while Asian on Asian, White on White, Hispanic on Hispanic, or any other type of crime is under-reported? Let's let the data tell us the truth."
+
+---
+
+Create a Tiktok style video as an elevator pitch for a study comparing the rates of gun violence between racial groups in New York City.
+
+Title of the video should be: Elevator Pitch Video
+
+Script indicated by ""
+
+Music should be should be somber and dramatic.
+
+Narrator should be male.
